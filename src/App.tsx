@@ -11,7 +11,11 @@ import {
   Heart,
   ChevronRight,
   ClipboardList,
-  Send
+  Send,
+  MapPin,
+  Phone,
+  FileCheck,
+  CheckCircle2
 } from "lucide-react";
 import { useState, useEffect, FormEvent } from "react";
 
@@ -52,13 +56,53 @@ const CATEGORIES = [
   { name: "Accesorios", image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800" },
 ];
 
+const MOCK_CLIENTS = [
+  { 
+    docType: "CC", 
+    docId: "12345678", 
+    name: "Juan Pérez", 
+    email: "juan@example.com",
+    phone: "+57 310 123 4567",
+    address: "Calle 100 #15-20, Apto 402",
+    city: "Bogotá",
+    documents: [
+      { name: "Cédula de Ciudadanía", status: "Validado" },
+      { name: "Comprobante de Domicilio", status: "Actualizado" }
+    ]
+  },
+  { 
+    docType: "NIT", 
+    docId: "900800700", 
+    name: "Moda S.A.S", 
+    email: "ventas@moda.com",
+    phone: "+57 (601) 456 7890",
+    address: "Zona Industrial Mamonal, Km 5",
+    city: "Cartagena",
+    documents: [
+      { name: "RUT (Registro Único Tributario)", status: "Vigente" },
+      { name: "Cámara de Comercio", status: "Actualizado 2026" },
+      { name: "Certificación Bancaria", status: "Validado" }
+    ]
+  },
+];
+
 export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [quoteStep, setQuoteStep] = useState<"initial" | "lookup" | "form">("initial");
+  const [docType, setDocType] = useState("CC");
+  const [docNumber, setDocNumber] = useState("");
+  const [lookupError, setLookupError] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [foundClient, setFoundClient] = useState<any>(null);
   const [quoteForm, setQuoteForm] = useState({
     name: "",
     email: "",
+    docType: "CC",
+    docNumber: "",
+    phone: "",
+    address: "",
+    city: "",
     product: "",
     message: ""
   });
@@ -70,13 +114,49 @@ export default function App() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const handleClientLookup = (e: FormEvent) => {
+    e.preventDefault();
+    const client = MOCK_CLIENTS.find(c => c.docId === docNumber && c.docType === docType);
+    if (client) {
+      setFoundClient(client);
+      setQuoteForm({
+        ...quoteForm,
+        name: client.name,
+        email: client.email,
+        docType: client.docType,
+        docNumber: client.docId,
+        phone: client.phone || "",
+        address: client.address || "",
+        city: client.city || ""
+      });
+      setQuoteStep("form");
+      setLookupError(false);
+    } else {
+      setLookupError(true);
+    }
+  };
+
   const handleQuoteSubmit = (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitted(true);
     setTimeout(() => {
       setIsSubmitted(false);
       setIsQuoteModalOpen(false);
-      setQuoteForm({ name: "", email: "", product: "", message: "" });
+      setQuoteStep("initial");
+      setDocNumber("");
+      setDocType("CC");
+      setFoundClient(null);
+      setQuoteForm({
+        name: "",
+        email: "",
+        docType: "CC",
+        docNumber: "",
+        phone: "",
+        address: "",
+        city: "",
+        product: "",
+        message: ""
+      });
     }, 3000);
   };
 
@@ -99,12 +179,29 @@ export default function App() {
             <div className="hidden md:flex gap-6 text-xs uppercase tracking-widest font-medium">
               <a href="#" className="hover:text-brand-gold transition-colors">Colecciones</a>
               <a href="#" className="hover:text-brand-gold transition-colors">Editorial</a>
-              <button 
-                onClick={() => setIsQuoteModalOpen(true)}
-                className="hover:text-brand-gold transition-colors uppercase"
-              >
-                Cotización
-              </button>
+                <button 
+                  onClick={() => {
+                    setQuoteStep("initial");
+                    setDocNumber("");
+                    setDocType("CC");
+                    setFoundClient(null);
+                    setQuoteForm({
+                      name: "",
+                      email: "",
+                      docType: "CC",
+                      docNumber: "",
+                      phone: "",
+                      address: "",
+                      city: "",
+                      product: "",
+                      message: ""
+                    });
+                    setIsQuoteModalOpen(true);
+                  }}
+                  className="hover:text-brand-gold transition-colors uppercase"
+                >
+                  Cotización
+                </button>
             </div>
           </div>
 
@@ -167,7 +264,25 @@ export default function App() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 }}
-                  onClick={() => { setIsMenuOpen(false); setIsQuoteModalOpen(true); }}
+                  onClick={() => { 
+                    setQuoteStep("initial");
+                    setDocNumber("");
+                    setDocType("CC");
+                    setFoundClient(null);
+                    setQuoteForm({
+                      name: "",
+                      email: "",
+                      docType: "CC",
+                      docNumber: "",
+                      phone: "",
+                      address: "",
+                      city: "",
+                      product: "",
+                      message: ""
+                    });
+                    setIsMenuOpen(false); 
+                    setIsQuoteModalOpen(true); 
+                  }}
                   className="text-left hover:text-brand-gold transition-colors flex items-center justify-between group"
                 >
                   Cotización
@@ -238,30 +353,220 @@ export default function App() {
                       <h3 className="text-2xl font-serif mb-2">¡Solicitud Enviada!</h3>
                       <p className="text-brand-ink/60">Nos pondremos en contacto contigo en menos de 24 horas.</p>
                     </motion.div>
+                  ) : quoteStep === "initial" ? (
+                    <div className="h-full flex flex-col justify-center space-y-8">
+                      <div className="text-center">
+                        <h3 className="text-xl font-serif mb-2">¿Es tu primera vez con nosotros?</h3>
+                        <p className="text-brand-ink/60 text-sm">Elige una opción para continuar</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4">
+                        <button 
+                          onClick={() => setQuoteStep("lookup")}
+                          className="w-full border border-brand-ink py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-ink hover:text-brand-paper transition-all"
+                        >
+                          Soy Cliente Antiguo
+                        </button>
+                        <button 
+                          onClick={() => setQuoteStep("form")}
+                          className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
+                        >
+                          Soy Cliente Nuevo
+                        </button>
+                      </div>
+                    </div>
+                  ) : quoteStep === "lookup" ? (
+                    <div className="h-full flex flex-col justify-center">
+                      <form onSubmit={handleClientLookup} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Tipo de Doc.</label>
+                            <select 
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none"
+                              value={docType}
+                              onChange={(e) => setDocType(e.target.value)}
+                            >
+                              <option value="CC">CC (Cédula)</option>
+                              <option value="NIT">NIT</option>
+                              <option value="CE">CE (Extranjería)</option>
+                              <option value="PT">PT (Pasaporte)</option>
+                              <option value="Otro">Otro</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Número</label>
+                            <input 
+                              required
+                              type="text" 
+                              placeholder="12345678"
+                              className={`w-full bg-transparent border-b ${lookupError ? 'border-red-500' : 'border-brand-ink/20'} py-2 focus:outline-none focus:border-brand-gold transition-colors`}
+                              value={docNumber}
+                              onChange={(e) => {
+                                setDocNumber(e.target.value);
+                                setLookupError(false);
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {lookupError && (
+                          <p className="text-red-500 text-[10px] mt-2 uppercase tracking-widest text-center">Cliente no encontrado. Prueba CC: 12345678</p>
+                        )}
+                        <div className="flex flex-col gap-4">
+                          <button 
+                            type="submit"
+                            className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
+                          >
+                            Consultar
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => setQuoteStep("initial")}
+                            className="text-[10px] uppercase tracking-widest font-bold text-center opacity-50 hover:opacity-100 transition-opacity"
+                          >
+                            Volver
+                          </button>
+                        </div>
+                      </form>
+                    </div>
                   ) : (
                     <form onSubmit={handleQuoteSubmit} className="space-y-6">
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Nombre Completo</label>
-                        <input 
-                          required
-                          type="text" 
-                          placeholder="Tu nombre"
-                          className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
-                          value={quoteForm.name}
-                          onChange={(e) => setQuoteForm({...quoteForm, name: e.target.value})}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Correo Electrónico</label>
-                        <input 
-                          required
-                          type="email" 
-                          placeholder="email@ejemplo.com"
-                          className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
-                          value={quoteForm.email}
-                          onChange={(e) => setQuoteForm({...quoteForm, email: e.target.value})}
-                        />
-                      </div>
+                      <AnimatePresence mode="wait">
+                        {foundClient && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-brand-gold/10 p-6 rounded-2xl mb-6 border border-brand-gold/20 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between mb-4 pb-4 border-b border-brand-gold/20">
+                              <div>
+                                <p className="text-[10px] uppercase tracking-widest font-bold text-brand-gold">Cliente Identificado</p>
+                                <h4 className="text-xl font-serif font-bold">{foundClient.name}</h4>
+                              </div>
+                              <CheckCircle2 className="text-brand-gold w-6 h-6" />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                              <div className="flex items-center gap-2 text-xs text-brand-ink/70">
+                                <Send className="w-3 h-3 text-brand-gold" />
+                                {foundClient.email}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-brand-ink/70">
+                                <Phone className="w-3 h-3 text-brand-gold" />
+                                {foundClient.phone}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-brand-ink/70">
+                                <MapPin className="w-3 h-3 text-brand-gold" />
+                                {foundClient.city}
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-brand-ink/70">
+                                <ClipboardList className="w-3 h-3 text-brand-gold" />
+                                {foundClient.docType}: {foundClient.docId}
+                              </div>
+                              <div className="md:col-span-2 flex items-start gap-2 text-xs text-brand-ink/70">
+                                <MapPin className="w-3 h-3 text-brand-gold mt-0.5 shrink-0" />
+                                {foundClient.address}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <p className="text-[10px] uppercase tracking-widest font-bold text-brand-gold mb-2">Documentos Registrados</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {foundClient.documents?.map((doc: any, i: number) => (
+                                  <div key={i} className="flex items-center gap-2 px-3 py-2 bg-brand-paper/50 rounded-lg text-[10px] border border-brand-gold/10">
+                                    <FileCheck className="w-3 h-3 text-green-600" />
+                                    <span className="flex-1 font-medium">{doc.name}</span>
+                                    <span className="text-[8px] uppercase font-bold text-brand-gold">{doc.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {!quoteForm.name && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                          <div className="md:col-span-2">
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Nombre Completo</label>
+                            <input 
+                              required
+                              type="text" 
+                              placeholder="Tu nombre"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.name}
+                              onChange={(e) => setQuoteForm({...quoteForm, name: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Correo Electrónico</label>
+                            <input 
+                              required
+                              type="email" 
+                              placeholder="email@ejemplo.com"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.email}
+                              onChange={(e) => setQuoteForm({...quoteForm, email: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Teléfono</label>
+                            <input 
+                              required
+                              type="tel" 
+                              placeholder="+34 000 000 000"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.phone}
+                              onChange={(e) => setQuoteForm({...quoteForm, phone: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Tipo Doc.</label>
+                            <select 
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none"
+                              value={quoteForm.docType}
+                              onChange={(e) => setQuoteForm({...quoteForm, docType: e.target.value})}
+                            >
+                              <option value="CC">CC</option>
+                              <option value="NIT">NIT</option>
+                              <option value="CE">CE</option>
+                              <option value="PT">PT</option>
+                              <option value="Otro">Otro</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Núm. Documento</label>
+                            <input 
+                              required
+                              type="text" 
+                              placeholder="12345678X"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.docNumber}
+                              onChange={(e) => setQuoteForm({...quoteForm, docNumber: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Ciudad</label>
+                            <input 
+                              required
+                              type="text" 
+                              placeholder="Madrid"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.city}
+                              onChange={(e) => setQuoteForm({...quoteForm, city: e.target.value})}
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Dirección</label>
+                            <input 
+                              required
+                              type="text" 
+                              placeholder="Calle, número, piso"
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors"
+                              value={quoteForm.address}
+                              onChange={(e) => setQuoteForm({...quoteForm, address: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Interés</label>
                         <select 
@@ -286,12 +591,39 @@ export default function App() {
                           onChange={(e) => setQuoteForm({...quoteForm, message: e.target.value})}
                         />
                       </div>
-                      <button 
-                        type="submit"
-                        className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
-                      >
-                        Enviar Solicitud
-                      </button>
+                      <div className="flex flex-col gap-4">
+                        <button 
+                          type="submit"
+                          className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
+                        >
+                          Enviar Solicitud
+                        </button>
+                        {quoteStep === "form" && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setQuoteStep("initial");
+                              setQuoteForm({
+                                name: "",
+                                email: "",
+                                docType: "CC",
+                                docNumber: "",
+                                phone: "",
+                                address: "",
+                                city: "",
+                                product: "",
+                                message: ""
+                              });
+                              setDocNumber("");
+                              setDocType("CC");
+                              setFoundClient(null);
+                            }}
+                            className="text-[10px] uppercase tracking-widest font-bold text-center opacity-50 hover:opacity-100 transition-opacity"
+                          >
+                            Volver
+                          </button>
+                        )}
+                      </div>
                     </form>
                   )}
                 </div>
@@ -338,7 +670,24 @@ export default function App() {
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-2 transition-transform" />
                 </button>
                 <button 
-                  onClick={() => setIsQuoteModalOpen(true)}
+                  onClick={() => {
+                    setQuoteStep("initial");
+                    setDocNumber("");
+                    setDocType("CC");
+                    setFoundClient(null);
+                    setQuoteForm({
+                      name: "",
+                      email: "",
+                      docType: "CC",
+                      docNumber: "",
+                      phone: "",
+                      address: "",
+                      city: "",
+                      product: "",
+                      message: ""
+                    });
+                    setIsQuoteModalOpen(true);
+                  }}
                   className="group flex items-center gap-4 border border-brand-ink text-brand-ink px-8 py-4 rounded-full hover:bg-brand-ink hover:text-brand-paper transition-all duration-300"
                 >
                   <span className="uppercase text-xs tracking-widest font-bold">Solicitar Cotización</span>
@@ -402,7 +751,24 @@ export default function App() {
                 Ofrecemos servicios de cotización personalizada para eventos, diseño a medida y pedidos especiales. Nuestro equipo de expertos te ayudará a materializar tu visión.
               </p>
               <button 
-                onClick={() => setIsQuoteModalOpen(true)}
+                onClick={() => {
+                  setQuoteStep("initial");
+                  setDocNumber("");
+                  setDocType("CC");
+                  setFoundClient(null);
+                  setQuoteForm({
+                    name: "",
+                    email: "",
+                    docType: "CC",
+                    docNumber: "",
+                    phone: "",
+                    address: "",
+                    city: "",
+                    product: "",
+                    message: ""
+                  });
+                  setIsQuoteModalOpen(true);
+                }}
                 className="bg-brand-ink text-brand-paper px-10 py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
               >
                 Obtener Cotización Gratis
