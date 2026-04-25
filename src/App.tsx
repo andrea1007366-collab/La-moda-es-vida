@@ -15,9 +15,15 @@ import {
   MapPin,
   Phone,
   FileCheck,
-  CheckCircle2
+  CheckCircle2,
+  Eye,
+  FileText,
+  Paperclip,
+  RotateCcw,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, ChangeEvent } from "react";
 
 const PRODUCTS = [
   {
@@ -93,8 +99,13 @@ export default function App() {
   const [docType, setDocType] = useState("CC");
   const [docNumber, setDocNumber] = useState("");
   const [lookupError, setLookupError] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<{type: 'success' | 'info' | 'error', text: string} | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [foundClient, setFoundClient] = useState<any>(null);
+  const [attachedFile, setAttachedFile] = useState<{name: string, type: string, size: string, url: string} | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [filingNumber, setFilingNumber] = useState("");
   const [quoteForm, setQuoteForm] = useState({
     name: "",
     email: "",
@@ -114,50 +125,153 @@ export default function App() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleClientLookup = (e: FormEvent) => {
+  const handleClientLookup = async (e: FormEvent) => {
     e.preventDefault();
-    const client = MOCK_CLIENTS.find(c => c.docId === docNumber && c.docType === docType);
-    if (client) {
-      setFoundClient(client);
-      setQuoteForm({
-        ...quoteForm,
-        name: client.name,
-        email: client.email,
-        docType: client.docType,
-        docNumber: client.docId,
-        phone: client.phone || "",
-        address: client.address || "",
-        city: client.city || ""
+    setIsLookingUp(true);
+    setLookupError(false);
+    setLookupMessage(null);
+
+    try {
+      const response = await fetch('https://eliriat.app.n8n.cloud/webhook/a9557188-b580-4fd2-a131-b4668360f5c4', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          docType,
+          docNumber,
+          timestamp: new Date().toISOString(),
+          source: 'web_cotizacion'
+        }),
       });
-      setQuoteStep("form");
-      setLookupError(false);
-    } else {
+
+      if (!response.ok) throw new Error('Error de red al consultar el servidor');
+
+      const data = await response.json();
+      
+      // Comprobamos si el cliente existe en el sistema n8n
+      // Si n8n devuelve datos del cliente consideramos que SI existe
+      if (data && (data.name || data.nombre || data.email)) {
+        const clientData = {
+          name: data.name || data.nombre || "",
+          email: data.email || data.correo || "",
+          docType: docType,
+          docNumber: docNumber,
+          phone: data.phone || data.telefono || "",
+          address: data.address || data.direccion || "",
+          city: data.city || data.ciudad || "",
+          documents: data.documents || []
+        };
+
+        setFoundClient(clientData);
+        setQuoteForm(prev => ({
+          ...prev,
+          ...clientData
+        }));
+        
+        setLookupMessage({ 
+          type: 'success', 
+          text: '¡Datos encontrados! Tus datos se encuentran registrados en nuestro sistema.' 
+        });
+
+        // Esperar un momento para que el usuario lea el mensaje
+        setTimeout(() => {
+          setQuoteStep("form");
+          setLookupMessage(null);
+        }, 3000);
+
+      } else {
+        // El cliente no existe o n8n devolvió vacío
+        setLookupMessage({ 
+          type: 'info', 
+          text: 'Tus datos no se encuentran registrados. Por favor, diligencia toda la información para crear tu registro.' 
+        });
+        
+        setTimeout(() => {
+          setQuoteStep("form");
+          setLookupMessage(null);
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Error en lookup:', error);
       setLookupError(true);
+      setLookupMessage({ 
+        type: 'error', 
+        text: 'Hubo un problema al conectar con el servicio de consulta. Por favor inténtalo de nuevo.' 
+      });
+    } finally {
+      setIsLookingUp(false);
     }
   };
 
   const handleQuoteSubmit = (e: FormEvent) => {
     e.preventDefault();
+    
+    // Generar radicado aleatorio
+    const date = new Date().getFullYear();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const newRadicado = `REF-${date}-${random}`;
+    setFilingNumber(newRadicado);
+    
     setIsSubmitted(true);
     setTimeout(() => {
-      setIsSubmitted(false);
-      setIsQuoteModalOpen(false);
-      setQuoteStep("initial");
-      setDocNumber("");
-      setDocType("CC");
-      setFoundClient(null);
-      setQuoteForm({
-        name: "",
-        email: "",
-        docType: "CC",
-        docNumber: "",
-        phone: "",
-        address: "",
-        city: "",
-        product: "",
-        message: ""
+      // No reseteamos inmediatamente para que el usuario pueda ver su radicado
+    }, 100);
+  };
+
+  const closeAndResetModal = () => {
+    setIsSubmitted(false);
+    setIsQuoteModalOpen(false);
+    setQuoteStep("initial");
+    setDocNumber("");
+    setDocType("CC");
+    setFoundClient(null);
+    setAttachedFile(null);
+    setFilingNumber("");
+    setQuoteForm({
+      name: "",
+      email: "",
+      docType: "CC",
+      docNumber: "",
+      phone: "",
+      address: "",
+      city: "",
+      product: "",
+      message: ""
+    });
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachedFile({
+        name: file.name,
+        type: file.type,
+        size: (file.size / 1024).toFixed(1) + " KB",
+        url: URL.createObjectURL(file)
       });
-    }, 3000);
+    }
+  };
+
+  const openQuoteModal = () => {
+    setQuoteStep("initial");
+    setDocNumber("");
+    setDocType("CC");
+    setFoundClient(null);
+    setAttachedFile(null);
+    setFilingNumber("");
+    setQuoteForm({
+      name: "",
+      email: "",
+      docType: "CC",
+      docNumber: "",
+      phone: "",
+      address: "",
+      city: "",
+      product: "",
+      message: ""
+    });
+    setIsQuoteModalOpen(true);
   };
 
   return (
@@ -180,24 +294,7 @@ export default function App() {
               <a href="#" className="hover:text-brand-gold transition-colors">Colecciones</a>
               <a href="#" className="hover:text-brand-gold transition-colors">Editorial</a>
                 <button 
-                  onClick={() => {
-                    setQuoteStep("initial");
-                    setDocNumber("");
-                    setDocType("CC");
-                    setFoundClient(null);
-                    setQuoteForm({
-                      name: "",
-                      email: "",
-                      docType: "CC",
-                      docNumber: "",
-                      phone: "",
-                      address: "",
-                      city: "",
-                      product: "",
-                      message: ""
-                    });
-                    setIsQuoteModalOpen(true);
-                  }}
+                  onClick={openQuoteModal}
                   className="hover:text-brand-gold transition-colors uppercase"
                 >
                   Cotización
@@ -265,23 +362,8 @@ export default function App() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 }}
                   onClick={() => { 
-                    setQuoteStep("initial");
-                    setDocNumber("");
-                    setDocType("CC");
-                    setFoundClient(null);
-                    setQuoteForm({
-                      name: "",
-                      email: "",
-                      docType: "CC",
-                      docNumber: "",
-                      phone: "",
-                      address: "",
-                      city: "",
-                      product: "",
-                      message: ""
-                    });
                     setIsMenuOpen(false); 
-                    setIsQuoteModalOpen(true); 
+                    openQuoteModal(); 
                   }}
                   className="text-left hover:text-brand-gold transition-colors flex items-center justify-between group"
                 >
@@ -325,7 +407,7 @@ export default function App() {
               className="bg-brand-paper w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl relative"
             >
               <button 
-                onClick={() => setIsQuoteModalOpen(false)}
+                onClick={closeAndResetModal}
                 className="absolute top-6 right-6 p-2 hover:bg-brand-ink/5 rounded-full z-10"
               >
                 <X className="w-6 h-6" />
@@ -345,13 +427,25 @@ export default function App() {
                     <motion.div 
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="h-full flex flex-col items-center justify-center text-center"
+                      className="h-full flex flex-col items-center justify-center text-center p-6"
                     >
-                      <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-                        <Send className="w-8 h-8" />
+                      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
+                        <FileCheck className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-serif mb-2">¡Solicitud Enviada!</h3>
-                      <p className="text-brand-ink/60">Nos pondremos en contacto contigo en menos de 24 horas.</p>
+                      <h3 className="text-3xl font-serif mb-4">¡Solicitud Exitosa!</h3>
+                      <div className="bg-brand-gold/5 border border-brand-gold/20 rounded-2xl p-6 mb-8 w-full">
+                        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-gold mb-2">Número de Radicado</p>
+                        <p className="text-3xl font-mono font-bold tracking-wider text-brand-ink">{filingNumber}</p>
+                      </div>
+                      <p className="text-brand-ink/60 mb-8 max-w-xs mx-auto">
+                        Hemos recibido tu solicitud. Conserva este número para cualquier consulta sobre tu trámite.
+                      </p>
+                      <button 
+                        onClick={closeAndResetModal}
+                        className="bg-brand-ink text-brand-paper px-10 py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
+                      >
+                        Finalizar
+                      </button>
                     </motion.div>
                   ) : quoteStep === "initial" ? (
                     <div className="h-full flex flex-col justify-center space-y-8">
@@ -375,13 +469,42 @@ export default function App() {
                       </div>
                     </div>
                   ) : quoteStep === "lookup" ? (
-                    <div className="h-full flex flex-col justify-center">
+                    <div className="h-full flex flex-col justify-center relative">
+                      <AnimatePresence>
+                        {lookupMessage && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className={`absolute inset-x-0 -top-4 z-20 p-4 rounded-xl border flex items-start gap-3 shadow-lg ${
+                              lookupMessage.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 
+                              lookupMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 
+                              'bg-brand-gold/10 border-brand-gold/20 text-brand-ink'
+                            }`}
+                          >
+                            {lookupMessage.type === 'error' ? (
+                              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                            ) : (
+                              <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-wider mb-1">
+                                {lookupMessage.type === 'success' ? 'Cliente Encontrado' : 
+                                 lookupMessage.type === 'error' ? 'Error de Consulta' : 'Nuevo Registro'}
+                              </p>
+                              <p className="text-xs leading-relaxed opacity-90">{lookupMessage.text}</p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                       <form onSubmit={handleClientLookup} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Tipo de Doc.</label>
                             <select 
-                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none"
+                              disabled={isLookingUp}
+                              className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none disabled:opacity-50"
                               value={docType}
                               onChange={(e) => setDocType(e.target.value)}
                             >
@@ -396,9 +519,10 @@ export default function App() {
                             <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Número</label>
                             <input 
                               required
+                              disabled={isLookingUp}
                               type="text" 
                               placeholder="12345678"
-                              className={`w-full bg-transparent border-b ${lookupError ? 'border-red-500' : 'border-brand-ink/20'} py-2 focus:outline-none focus:border-brand-gold transition-colors`}
+                              className={`w-full bg-transparent border-b ${lookupError ? 'border-red-500' : 'border-brand-ink/20'} py-2 focus:outline-none focus:border-brand-gold transition-colors disabled:opacity-50`}
                               value={docNumber}
                               onChange={(e) => {
                                 setDocNumber(e.target.value);
@@ -407,23 +531,33 @@ export default function App() {
                             />
                           </div>
                         </div>
-                        {lookupError && (
-                          <p className="text-red-500 text-[10px] mt-2 uppercase tracking-widest text-center">Cliente no encontrado. Prueba CC: 12345678</p>
+                        {lookupError && !lookupMessage && (
+                          <p className="text-red-500 text-[10px] mt-2 uppercase tracking-widest text-center">No se pudo realizar la consulta. Inténtalo de nuevo.</p>
                         )}
-                        <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4 pt-4">
                           <button 
+                            disabled={isLookingUp}
                             type="submit"
-                            className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
+                            className="w-full bg-brand-ink text-brand-paper py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all relative flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed"
                           >
-                            Consultar
+                            {isLookingUp ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Consultando...</span>
+                              </>
+                            ) : (
+                              <span>Consultar Documento</span>
+                            )}
                           </button>
-                          <button 
-                            type="button"
-                            onClick={() => setQuoteStep("initial")}
-                            className="text-[10px] uppercase tracking-widest font-bold text-center opacity-50 hover:opacity-100 transition-opacity"
-                          >
-                            Volver
-                          </button>
+                          {!isLookingUp && (
+                            <button 
+                              type="button"
+                              onClick={() => setQuoteStep("initial")}
+                              className="text-[10px] uppercase tracking-widest font-bold text-center opacity-50 hover:opacity-100 transition-opacity"
+                            >
+                              Volver
+                            </button>
+                          )}
                         </div>
                       </form>
                     </div>
@@ -567,19 +701,57 @@ export default function App() {
                           </div>
                         </div>
                       )}
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Interés</label>
-                        <select 
-                          className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none"
-                          value={quoteForm.product}
-                          onChange={(e) => setQuoteForm({...quoteForm, product: e.target.value})}
-                        >
-                          <option value="">Selecciona una opción</option>
-                          <option value="custom">Diseño Personalizado</option>
-                          <option value="bulk">Pedido al por Mayor</option>
-                          <option value="styling">Asesoría de Imagen</option>
-                          <option value="other">Otro</option>
-                        </select>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Interés</label>
+                          <select 
+                            className="w-full bg-transparent border-b border-brand-ink/20 py-2 focus:outline-none focus:border-brand-gold transition-colors appearance-none"
+                            value={quoteForm.product}
+                            onChange={(e) => setQuoteForm({...quoteForm, product: e.target.value})}
+                          >
+                            <option value="">Selecciona una opción</option>
+                            <option value="custom">Diseño Personalizado</option>
+                            <option value="bulk">Pedido al por Mayor</option>
+                            <option value="styling">Asesoría de Imagen</option>
+                            <option value="other">Otro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Adjuntar Documento</label>
+                          <div className="relative group">
+                            <input 
+                              type="file" 
+                              id="file-upload"
+                              className="hidden"
+                              onChange={handleFileChange}
+                              accept="image/*,.pdf"
+                            />
+                            <label 
+                              htmlFor="file-upload"
+                              className="flex items-center justify-between w-full border-b border-brand-ink/20 py-2 cursor-pointer group-hover:border-brand-gold transition-colors"
+                            >
+                              <span className="text-xs text-brand-ink/50 truncate max-w-[150px]">
+                                {attachedFile ? attachedFile.name : "Seleccionar archivo"}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                {attachedFile && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setIsPreviewOpen(true);
+                                    }}
+                                    className="p-1 hover:text-brand-gold transition-colors"
+                                    title="Visualizar"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <Paperclip className="w-4 h-4 text-brand-ink/30 group-hover:text-brand-gold transition-colors" />
+                              </div>
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-widest font-bold mb-2">Detalles</label>
@@ -617,6 +789,7 @@ export default function App() {
                               setDocNumber("");
                               setDocType("CC");
                               setFoundClient(null);
+                              setAttachedFile(null);
                             }}
                             className="text-[10px] uppercase tracking-widest font-bold text-center opacity-50 hover:opacity-100 transition-opacity"
                           >
@@ -627,6 +800,67 @@ export default function App() {
                     </form>
                   )}
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Document Preview Modal */}
+      <AnimatePresence>
+        {isPreviewOpen && attachedFile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-brand-ink/90 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-brand-paper w-full max-w-4xl h-[80vh] rounded-3xl overflow-hidden relative flex flex-col shadow-2xl"
+            >
+              <div className="p-6 border-b border-brand-ink/10 flex justify-between items-center bg-brand-paper">
+                <div>
+                  <h3 className="font-serif text-xl font-bold">{attachedFile.name}</h3>
+                  <p className="text-[10px] text-brand-ink/50 uppercase tracking-widest">{attachedFile.size} • {attachedFile.type}</p>
+                </div>
+                <button 
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="p-2 hover:bg-brand-ink/5 rounded-full"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="flex-1 bg-brand-ink/5 overflow-auto flex items-center justify-center p-4">
+                {attachedFile.type.startsWith('image/') ? (
+                  <img 
+                    src={attachedFile.url} 
+                    alt="Preview" 
+                    className="max-w-full max-h-full object-contain shadow-lg rounded-lg"
+                  />
+                ) : attachedFile.type === 'application/pdf' ? (
+                  <iframe 
+                    src={attachedFile.url} 
+                    className="w-full h-full border-0 rounded-lg shadow-lg"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <div className="text-center p-12">
+                    <FileText className="w-20 h-20 text-brand-gold mx-auto mb-6" />
+                    <p className="text-brand-ink/60 font-serif text-lg">Este tipo de archivo no tiene vista previa directa.</p>
+                    <p className="text-sm text-brand-ink/40 mt-2 italic">Descárgalo para ver el contenido completo.</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t border-brand-ink/10 flex justify-end gap-4 bg-brand-paper">
+                <button 
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="px-8 py-3 rounded-full uppercase text-xs tracking-widest font-bold border border-brand-ink hover:bg-brand-ink hover:text-brand-paper transition-all"
+                >
+                  Cerrar
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -670,24 +904,7 @@ export default function App() {
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-2 transition-transform" />
                 </button>
                 <button 
-                  onClick={() => {
-                    setQuoteStep("initial");
-                    setDocNumber("");
-                    setDocType("CC");
-                    setFoundClient(null);
-                    setQuoteForm({
-                      name: "",
-                      email: "",
-                      docType: "CC",
-                      docNumber: "",
-                      phone: "",
-                      address: "",
-                      city: "",
-                      product: "",
-                      message: ""
-                    });
-                    setIsQuoteModalOpen(true);
-                  }}
+                  onClick={openQuoteModal}
                   className="group flex items-center gap-4 border border-brand-ink text-brand-ink px-8 py-4 rounded-full hover:bg-brand-ink hover:text-brand-paper transition-all duration-300"
                 >
                   <span className="uppercase text-xs tracking-widest font-bold">Solicitar Cotización</span>
@@ -751,24 +968,7 @@ export default function App() {
                 Ofrecemos servicios de cotización personalizada para eventos, diseño a medida y pedidos especiales. Nuestro equipo de expertos te ayudará a materializar tu visión.
               </p>
               <button 
-                onClick={() => {
-                  setQuoteStep("initial");
-                  setDocNumber("");
-                  setDocType("CC");
-                  setFoundClient(null);
-                  setQuoteForm({
-                    name: "",
-                    email: "",
-                    docType: "CC",
-                    docNumber: "",
-                    phone: "",
-                    address: "",
-                    city: "",
-                    product: "",
-                    message: ""
-                  });
-                  setIsQuoteModalOpen(true);
-                }}
+                onClick={openQuoteModal}
                 className="bg-brand-ink text-brand-paper px-10 py-4 rounded-full uppercase text-xs tracking-widest font-bold hover:bg-brand-gold transition-all"
               >
                 Obtener Cotización Gratis
